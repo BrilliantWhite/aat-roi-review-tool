@@ -1,0 +1,1 @@
+image_id,source_filename,relative_path,file_ext,width,height,channels,readable,quality_flag,blur_score_laplacian,contrast_std,dynamic_range_p01_p99,estimated_tilt_deg,background_unevenness,artifact_border_score,issues,segmentation_implication

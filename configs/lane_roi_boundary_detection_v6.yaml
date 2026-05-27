@@ -1,0 +1,88 @@
+method: horizontal_roi_adaptive_lane_boundaries_v6
+# v6 is standalone: raw images + shared inventory/projection metadata are inputs; v5 is read only for optional comparison CSV.
+roi_profile_x_margin_fraction: 0.08
+roi_allowed_y_min_fraction: 0.08
+roi_allowed_y_max_fraction: 0.88
+roi_smoothing_window_fraction: 0.018
+roi_minimum_smoothing_window_px: 9
+roi_maximum_smoothing_window_px: 51
+roi_threshold_quantile: 0.58
+roi_threshold_floor_fraction: 0.30
+roi_min_height_fraction: 0.30
+roi_max_height_fraction: 0.72
+roi_padding_fraction: 0.035
+roi_low_confidence_height_fraction: 0.24
+band_region_y_ranges:
+  - [0.00, 1.00]
+  - [0.12, 0.72]
+  - [0.25, 0.92]
+whole_projection_weight: 0.20
+band_projection_weight: 0.80
+smoothing_window_fraction: 0.010
+minimum_smoothing_window_px: 5
+maximum_smoothing_window_px: 39
+strong_peak_prominence: 0.034
+strong_peak_height_quantile: 0.40
+weak_peak_prominence: 0.019
+weak_peak_height_quantile: 0.34
+weak_peak_min_band_support: 2
+weak_peak_min_combined_value_quantile: 0.42
+minimum_peak_distance_fraction: 0.030
+edge_margin_fraction: 0.025
+expected_lane_count_min: 1
+expected_lane_count_max: 24
+review_lane_count_min: 4
+review_lane_count_max: 22
+coverage_target_lane_count: 18
+coverage_fallback_min_confident_count: 6
+coverage_full_layout_min_direct_count: 9
+coverage_full_layout_min_width_px: 350
+coverage_full_layout_excluded_issue_tokens:
+  - very_small_or_narrow
+  - portrait/narrow_crop
+coverage_interpolation_gap_multiplier: 1.62
+coverage_local_window_fraction: 0.020
+coverage_local_window_min_px: 4
+coverage_extrapolate_edges: true
+coverage_max_added_fraction: 0.45
+fallback_confidence_high_prominence: 0.10
+fallback_confidence_medium_prominence: 0.04
+fallback_confidence_high_smoothed_quantile: 0.68
+fallback_confidence_medium_smoothed_quantile: 0.48
+boundary_search_half_spacing_fraction: 0.46
+boundary_min_half_width_px: 6
+boundary_max_half_width_fraction_of_spacing: 0.49
+boundary_gradient_weight: 0.35
+boundary_valley_weight: 0.65
+boundary_min_coverage_fraction_of_spacing: 0.55
+boundary_max_coverage_fraction_of_spacing: 0.98
+boundary_edge_padding_px: 2
+high_risk_oversegmentation_image_ids:
+  - IMG_0023
+  - IMG_0024
+  - IMG_0025
+  - IMG_0032
+  - IMG_0056
+  - IMG_0057
+  - IMG_0064
+  - IMG_0087
+high_risk_max_nonfallback_count: 6
+high_risk_max_accepted_count: 6
+sample_diagnostic_image_ids:
+  - IMG_0001
+  - IMG_0002
+  - IMG_0003
+  - IMG_0004
+  - IMG_0005
+  - IMG_0009
+  - IMG_0017
+  - IMG_0023
+  - IMG_0024
+  - IMG_0025
+  - IMG_0032
+  - IMG_0041
+  - IMG_0048
+  - IMG_0056
+  - IMG_0057
+  - IMG_0064
+  - IMG_0087

@@ -1,0 +1,35 @@
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Local IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local agent/worktree state
+.claude/
+.codegraph/
+
+# Research data and generated outputs
+dataset/Originial/*
+!dataset/Originial/.gitkeep
+dataset/metadata/*.csv
+!dataset/metadata/image_inventory.csv
+!dataset/metadata/image_quality_report.csv
+!dataset/metadata/lane_count_review.csv
+outputs/*
+!outputs/.gitkeep
+Web/review_exports/*
+!Web/review_exports/.gitkeep
+
+# OS files
+Thumbs.db
+.DS_Store

@@ -1,0 +1,18 @@
+method: grayscale_projection_peaks
+smoothing_window_fraction: 0.018
+minimum_smoothing_window_px: 7
+maximum_smoothing_window_px: 51
+peak_prominence: 0.08
+peak_height_quantile: 0.60
+minimum_peak_distance_fraction: 0.045
+edge_margin_fraction: 0.03
+expected_lane_count_min: 4
+expected_lane_count_max: 24
+review_lane_count_min: 4
+review_lane_count_max: 22
+sample_diagnostic_image_ids:
+  - IMG_0006
+  - IMG_0001
+  - IMG_0002
+  - IMG_0025
+  - IMG_0041

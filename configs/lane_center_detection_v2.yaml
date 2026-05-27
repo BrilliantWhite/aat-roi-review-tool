@@ -1,0 +1,28 @@
+method: grayscale_projection_peaks_v2_coverage
+smoothing_window_fraction: 0.012
+minimum_smoothing_window_px: 5
+maximum_smoothing_window_px: 41
+peak_prominence: 0.045
+peak_height_quantile: 0.45
+minimum_peak_distance_fraction: 0.032
+edge_margin_fraction: 0.025
+expected_lane_count_min: 4
+expected_lane_count_max: 24
+review_lane_count_min: 4
+review_lane_count_max: 22
+coverage_target_lane_count: 18
+coverage_fallback_min_confident_count: 2
+coverage_interpolation_gap_multiplier: 1.55
+coverage_local_window_fraction: 0.018
+coverage_local_window_min_px: 4
+coverage_extrapolate_edges: true
+coverage_max_added_fraction: 0.75
+sample_diagnostic_image_ids:
+  - IMG_0001
+  - IMG_0002
+  - IMG_0003
+  - IMG_0004
+  - IMG_0005
+  - IMG_0006
+  - IMG_0025
+  - IMG_0041

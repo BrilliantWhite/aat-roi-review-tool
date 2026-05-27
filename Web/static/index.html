@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AAT 凝胶 ROI / 泳道复核工具</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-header-top">
+                <h1 id="app-title">AAT 凝胶复核工具</h1>
+                <button id="language-toggle" class="secondary-btn language-toggle" type="button">EN</button>
+            </div>
+            <p class="subtitle" id="current-image-label">加载中...</p>
+        </div>
+
+        <div class="sidebar-content">
+            <section class="panel-section">
+                <h2 id="heading-image-list">图像列表</h2>
+                <div class="image-list" id="image-list"></div>
+            </section>
+
+            <section class="panel-section">
+                <h2 id="heading-actions">操作</h2>
+                <div class="button-row">
+                    <button id="btn-prev" class="secondary-btn">上一张</button>
+                    <button id="btn-next" class="secondary-btn">下一张</button>
+                </div>
+                <div class="button-row stack">
+                    <input id="training-csv-input" type="file" accept=".csv" hidden>
+                    <button id="btn-update-dataset" class="secondary-btn">更新数据集</button>
+                    <button id="btn-import-training-csv" class="secondary-btn">导入训练CSV</button>
+                    <button id="btn-export-review-restore" class="secondary-btn">导出可复现分割CSV</button>
+                    <button id="btn-export-training-csv" class="secondary-btn">导出训练CSV</button>
+                    <button id="btn-reload-saved" class="secondary-btn">从已保存结果全局刷新</button>
+                    <button id="btn-reset" class="secondary-btn">重置</button>
+                    <button id="btn-save" class="primary-btn">保存当前图 reviewed CSV</button>
+                </div>
+            </section>
+
+            <section class="panel-section">
+                <h2 id="heading-display">显示设置</h2>
+                <div class="slider-row">
+                    <label for="mask-opacity" class="slider-label" id="mask-opacity-label">Mask 透明度</label>
+                    <span id="mask-opacity-value" class="slider-value">16%</span>
+                </div>
+                <input id="mask-opacity" class="opacity-slider" type="range" min="0" max="100" step="1" value="16">
+            </section>
+
+            <section class="panel-section">
+                <h2 id="heading-annotation">泳道标注</h2>
+                <div class="annotation-panel">
+                    <div class="annotation-export-options">
+                        <label class="annotation-toggle" for="write-annotation-csv">
+                            <input id="write-annotation-csv" type="checkbox" checked>
+                            <span id="label-export-csv">导出 CSV annotation</span>
+                        </label>
+                        <label class="annotation-toggle" for="write-annotation-jsonl">
+                            <input id="write-annotation-jsonl" type="checkbox">
+                            <span id="label-export-jsonl">导出 JSONL annotation</span>
+                        </label>
+                    </div>
+                    <div id="annotation-file-state" class="annotation-file-state"></div>
+                    <div id="annotation-fields" class="annotation-fields"></div>
+                </div>
+            </section>
+
+            <section class="panel-section">
+                <h2 id="heading-status">当前状态</h2>
+                <div class="info-grid" id="status-panel"></div>
+            </section>
+
+            <textarea id="review-notes" hidden></textarea>
+        </div>
+    </aside>
+
+    <main class="workspace">
+        <div class="workspace-header">
+            <div>
+                <h2 id="workspace-title">ROI / lane visual review</h2>
+                <p id="workspace-subtitle">绿色区域表示共享 ROI；黄色边界可左右拖拽调整。</p>
+            </div>
+            <div class="legend">
+                <span id="legend-roi"><i class="legend-swatch roi"></i> ROI</span>
+                <span id="legend-boundary"><i class="legend-swatch boundary"></i> Lane boundary</span>
+                <span id="legend-center"><i class="legend-swatch center"></i> Lane center</span>
+            </div>
+        </div>
+
+        <div class="canvas-shell">
+            <div class="canvas-wrapper">
+                <div id="image-stage">
+                    <img id="target-image" alt="AAT gel image" draggable="false">
+                    <svg id="overlay" xmlns="http://www.w3.org/2000/svg">
+                        <g id="overlay-layer"></g>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="lane-modal" class="lane-modal hidden" role="dialog" aria-modal="true" aria-labelledby="lane-modal-title">
+        <div class="lane-modal-backdrop" id="lane-modal-backdrop"></div>
+        <div class="lane-modal-card">
+            <button id="lane-modal-close" class="lane-modal-close" type="button" aria-label="关闭">×</button>
+            <h2 id="lane-modal-title">泳道标注</h2>
+            <div class="lane-modal-body">
+                <section class="lane-modal-left">
+                    <div class="lane-category-editor">
+                        <input id="lane-category-input" list="category-suggestions" type="text" placeholder="输入该泳道 category">
+                        <datalist id="category-suggestions"></datalist>
+                        <button id="btn-add-category" class="secondary-btn" type="button">添加到常用项</button>
+                    </div>
+                    <div id="category-chip-list" class="category-chip-list"></div>
+                    <div class="lane-modal-placeholder" id="lane-modal-placeholder">后续功能预留区域</div>
+                    <div class="button-row lane-modal-danger-row">
+                        <button id="btn-delete-lane" class="danger-btn" type="button">删除该泳道</button>
+                    </div>
+                    <div class="button-row lane-modal-actions">
+                        <button id="btn-lane-modal-cancel" class="secondary-btn" type="button">取消</button>
+                        <button id="btn-lane-modal-save" class="primary-btn" type="button">保存</button>
+                    </div>
+                </section>
+                <section class="lane-modal-right">
+                    <div class="lane-preview-toolbar">
+                        <label for="lane-preview-zoom" id="lane-preview-zoom-label">等比放大</label>
+                        <span id="lane-preview-zoom-value">100%</span>
+                    </div>
+                    <input id="lane-preview-zoom" class="lane-preview-zoom" type="range" min="100" max="500" step="25" value="100">
+                    <div class="lane-preview-frame">
+                        <canvas id="lane-preview-canvas"></canvas>
+                    </div>
+                    <p id="lane-preview-meta" class="lane-preview-meta"></p>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="reset-scope-modal" class="lane-modal hidden" role="dialog" aria-modal="true" aria-labelledby="reset-scope-title">
+        <div class="lane-modal-backdrop" id="reset-scope-backdrop"></div>
+        <div class="lane-modal-card reset-scope-card">
+            <button id="reset-scope-close" class="lane-modal-close" type="button" aria-label="关闭">×</button>
+            <h2 id="reset-scope-title">选择重置范围</h2>
+            <div class="lane-modal-body reset-scope-body">
+                <section class="lane-modal-left">
+                    <p id="reset-scope-description">请选择要恢复为自动结果的范围。</p>
+                    <div class="button-row stack">
+                        <button id="btn-reset-current" class="secondary-btn" type="button">重置当前图为自动结果</button>
+                        <button id="btn-reset-all" class="danger-btn" type="button">重置所有图为自动结果</button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
