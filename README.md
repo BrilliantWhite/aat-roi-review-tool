@@ -10,7 +10,7 @@ This repository contains the code, configuration, and documentation needed to ru
 - assigns stable `IMG_0001` style image IDs
 - generates vertical projection metadata
 - runs the v6 horizontal-ROI-aware lane boundary pipeline
-- serves a local FastAPI + static Web review interface
+- serves a local FastAPI and static Web review interface
 - lets users adjust shared ROI and lane boundaries
 - supports lane-level category annotation
 - exports reviewed geometry and training CSV files
@@ -60,41 +60,29 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn app:app --app-dir Web --host 127.0.0.1 --port 8000
 ```
 
-## Screenshots / 界面截图
+## Screenshots
 
-The screenshots below show the internal research review workflow with real example gel images from the private project environment.
-
-以下截图展示 private 仓库内部协作场景下的真实凝胶图复核流程；原始图片仍不提交到 Git。
+The screenshots below show the internal research review workflow with real example gel images from the private project environment. Raw source images are still excluded from Git.
 
 ![Main review interface](docs/assets/screenshots/01-main-review-interface.png)
 
 Main review interface with the image list, automatic ROI, and lane boundary overlays.
 
-主复核界面包含图像列表、自动 ROI 区域和泳道边界叠加结果。
-
 ![Update dataset action](docs/assets/screenshots/02-update-dataset-action.png)
 
-The `更新数据集` action rescans local images and reruns the automatic v6 segmentation pipeline.
-
-`更新数据集` 会重新扫描本地图片，并重新运行 v6 自动分割流程。
+The `Update dataset` action rescans local images and reruns the automatic v6 segmentation pipeline.
 
 ![ROI and lane review](docs/assets/screenshots/03-roi-and-lane-review.png)
 
 ROI and lane overlays are reviewed visually before being accepted as training or restore data.
 
-ROI 和泳道边界需要经过人工目视复核后，再作为训练或复现数据使用。
-
 ![Lane annotation modal](docs/assets/screenshots/04-lane-annotation-modal.png)
 
 Clicking a lane opens the annotation modal for category entry and lane-level inspection.
 
-点击泳道后会打开标注窗口，用于填写 category 并检查单条泳道。
-
 ![Export review results](docs/assets/screenshots/05-export-review-results.png)
 
 Reviewed geometry and lane annotations can be saved and exported from the action panel.
-
-复核后的几何结果和泳道标注可以在操作区保存并导出。
 
 ## Adding Images
 
@@ -113,7 +101,7 @@ Reviewed geometry and lane annotations can be saved and exported from the action
    .bmp
    ```
 
-3. Open the Web tool and click `更新数据集`.
+3. Open the Web tool and click `Update dataset`.
 
 The update action rebuilds the inventory, creates conservative quality placeholders for new images, regenerates projection metadata, reruns v6 segmentation, and refreshes the Web image list.
 
@@ -137,7 +125,7 @@ These files are ignored by Git by default because they may contain research data
 
 ## Command-Line Pipeline
 
-The Web `更新数据集` button runs this sequence:
+The Web `Update dataset` button runs this sequence:
 
 ```text
 scripts/build_image_inventory.py
