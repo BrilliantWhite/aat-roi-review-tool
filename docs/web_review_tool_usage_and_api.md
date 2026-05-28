@@ -471,7 +471,10 @@ Each boundary row typically includes:
 ## `POST /api/reload`
 Clears any temporary imported annotation session and reloads saved reviewed CSV state into the backend repository without rerunning automatic segmentation.
 
-Use this when the UI is still showing an imported temporary session and you want to return to the saved files under `Web/review_exports/`.
+## `POST /api/restore/review-restore-export`
+Restores `Web/review_exports/review_restore_export.csv` back into the reviewed ROI, lane, manifest, and annotation CSV files.
+
+Use this after resetting images if you previously exported a restore CSV and need to recover that saved snapshot.
 
 ## `POST /api/dataset/update`
 Runs the dataset refresh pipeline used by the `更新数据集` button.

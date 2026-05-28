@@ -573,6 +573,8 @@ def import_review_restore_csv(
     csv_text: str,
     image_sizes: dict[str, tuple[int, int]],
     image_sources: dict[str, str],
+    *,
+    skip_unknown_images: bool = False,
 ) -> dict[str, Any]:
     reader = csv.DictReader(io.StringIO(csv_text))
     if reader.fieldnames is None:
@@ -610,6 +612,8 @@ def import_review_restore_csv(
         if not image_id:
             _raise_import_error(f"row {row_number}: image_id is blank")
         if image_id not in image_sizes:
+            if skip_unknown_images:
+                continue
             _raise_import_error(f"row {row_number}: image_id is not in the current dataset: {image_id}")
         expected_source_filename = image_sources.get(image_id, "")
         if source_filename != expected_source_filename:
@@ -668,6 +672,9 @@ def import_review_restore_csv(
                 "category": str(row.get("category", "")).strip(),
             }
         )
+
+    if not restore_rows_by_image:
+        _raise_import_error("no rows in the restore CSV match the current dataset")
 
     ensure_review_exports()
     existing_roi_rows, existing_candidate_rows, existing_manifest_rows = load_review_rows()
@@ -801,6 +808,21 @@ def import_review_restore_csv(
         "restored_image_count": len(restored_image_ids),
         "restored_lane_count": sum(len(rows) for rows in restore_rows_by_image.values()),
     }
+
+
+def restore_existing_review_restore_export(
+    image_sizes: dict[str, tuple[int, int]],
+    image_sources: dict[str, str],
+) -> dict[str, Any]:
+    if not REVIEW_RESTORE_EXPORT_PATH.exists():
+        _raise_import_error(f"{REVIEW_RESTORE_EXPORT_PATH.name} does not exist. Export restore CSV first.")
+    csv_text = REVIEW_RESTORE_EXPORT_PATH.read_text(encoding="utf-8-sig")
+    return import_review_restore_csv(
+        csv_text,
+        image_sizes,
+        image_sources,
+        skip_unknown_images=True,
+    )
 
 
 def _median_or_blank(values: list[float]) -> str:

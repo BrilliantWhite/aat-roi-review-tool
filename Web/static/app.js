@@ -25,7 +25,7 @@ const TRANSLATIONS = {
             importTrainingCsv: '导入标注CSV',
             exportReviewRestore: '导出可复现分割CSV',
             exportTrainingCsv: '导出训练CSV',
-            reloadSaved: '从已保存结果全局刷新',
+            reloadSaved: '从可复现CSV恢复',
             reset: '重置',
             save: '保存当前图 reviewed CSV',
         },
@@ -94,7 +94,7 @@ const TRANSLATIONS = {
             successAll: '已重置所有图片为自动结果',
         },
         confirm: {
-            reloadSaved: 'Current unsaved drafts will be discarded. Continue?',
+            reloadSaved: 'This will restore Web/review_exports/review_restore_export.csv into the reviewed CSV files. Continue?',
             updateDataset: '更新数据集会重新扫描 dataset/Originial/ 并重跑自动分割；当前未保存修改会被丢弃。是否继续？',
             importReviewRestore: 'Importing review_restore_export.csv will overwrite saved reviewed CSV rows for the matching images. Continue?',
             importTrainingCsv: 'Current unsaved drafts will be discarded after import. Continue?',
@@ -102,7 +102,7 @@ const TRANSLATIONS = {
         },
         toast: {
             saveSuccess: '已保存当前图 reviewed CSV',
-            reloadSavedSuccess: '已从保存结果重新同步页面',
+            reloadSavedSuccess: (imageCount, laneCount) => `已从可复现CSV恢复：${imageCount} 张图，${laneCount} 条泳道`,
             updateDatasetSuccess: (imageCount, addedQualityRows) => `已更新数据集：${imageCount} 张图，新增 ${addedQualityRows} 条质量报告占位行`,
             importReviewRestoreSuccess: (imageCount, laneCount) => `已导入可复现分割CSV：${imageCount} 张图，${laneCount} 条泳道`,
             importTrainingCsvSuccess: (imageCount, laneCount) => `已导入标注CSV：${imageCount} 张图，${laneCount} 条泳道`,
@@ -135,7 +135,7 @@ const TRANSLATIONS = {
             importTrainingCsv: 'Import annotation CSV',
             exportReviewRestore: 'Export restore CSV',
             exportTrainingCsv: 'Export training CSV',
-            reloadSaved: 'Refresh all from saved results',
+            reloadSaved: 'Restore exported CSV',
             reset: 'Reset',
             save: 'Save current reviewed CSV',
         },
@@ -204,7 +204,7 @@ const TRANSLATIONS = {
             successAll: 'All images reset to automatic results',
         },
         confirm: {
-            reloadSaved: 'Current unsaved drafts will be discarded. Continue?',
+            reloadSaved: 'This will restore Web/review_exports/review_restore_export.csv into the reviewed CSV files. Continue?',
             updateDataset: 'Updating the dataset will rescan dataset/Originial/ and rerun automatic segmentation. Current unsaved drafts will be discarded. Continue?',
             importReviewRestore: 'Importing review_restore_export.csv will overwrite saved reviewed CSV rows for the matching images. Continue?',
             importTrainingCsv: 'Current unsaved drafts will be discarded after import. Continue?',
@@ -212,7 +212,7 @@ const TRANSLATIONS = {
         },
         toast: {
             saveSuccess: 'Current reviewed CSV saved',
-            reloadSavedSuccess: 'Page resynced from saved results',
+            reloadSavedSuccess: (imageCount, laneCount) => `Restored exported CSV: ${imageCount} images, ${laneCount} lanes`,
             updateDatasetSuccess: (imageCount, addedQualityRows) => `Dataset updated: ${imageCount} images, ${addedQualityRows} new quality placeholder rows`,
             importReviewRestoreSuccess: (imageCount, laneCount) => `Imported restore CSV: ${imageCount} images, ${laneCount} lanes`,
             importTrainingCsvSuccess: (imageCount, laneCount) => `Imported annotation CSV: ${imageCount} images, ${laneCount} lanes`,
@@ -1321,11 +1321,11 @@ async function reloadSavedState() {
     if (!ensureProceedWithDirty(t('confirm.reloadSaved'))) {
         return;
     }
-    await fetchJson('/api/reload', { method: 'POST' });
+    const summary = await fetchJson('/api/restore/review-restore-export', { method: 'POST' });
     clearAllDrafts();
     await initializeData(state.currentIndex);
     clearDirty();
-    showToast(t('toast.reloadSavedSuccess'));
+    showToast(t('toast.reloadSavedSuccess', summary.restored_image_count, summary.restored_lane_count));
 }
 
 async function updateDataset() {

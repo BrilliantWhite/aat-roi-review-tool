@@ -23,6 +23,7 @@ from review_store import (
     import_training_annotation_csv,
     load_category_suggestions,
     reset_image_review,
+    restore_existing_review_restore_export,
     save_image_review,
 )
 
@@ -209,6 +210,25 @@ def reload_state() -> dict[str, Any]:
     clear_imported_annotation_rows()
     repository.refresh()
     return {"ok": True}
+
+
+@app.post("/api/restore/review-restore-export")
+def restore_review_restore_export() -> dict[str, Any]:
+    image_sizes = {
+        image_id: (record.width, record.height)
+        for image_id, record in repository.inventory_records.items()
+    }
+    image_sources = {
+        image_id: record.source_filename
+        for image_id, record in repository.inventory_records.items()
+    }
+    try:
+        summary = restore_existing_review_restore_export(image_sizes, image_sources)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    repository.refresh()
+    return {"ok": True, **summary}
 
 
 @app.post("/api/dataset/update")

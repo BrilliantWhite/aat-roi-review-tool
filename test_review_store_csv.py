@@ -183,6 +183,56 @@ class ReviewStoreCsvTests(unittest.TestCase):
         self.assertEqual(summary["lane_count"], 1)
         self.assertEqual(export_rows[0]["image_id"], "IMG_NEW")
 
+    def test_restore_existing_review_restore_export_skips_stale_images(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            export_root = Path(tmp_dir) / "review_exports"
+            self._patch_review_paths(stack, export_root)
+            export_root.mkdir(parents=True)
+            csv_text = _csv_text(
+                review_store.RESTORE_EXPORT_FIELDNAMES,
+                [
+                    {
+                        "image_id": "IMG_OLD",
+                        "source_filename": "old.png",
+                        "candidate_index": 1,
+                        "width": 100,
+                        "height": 80,
+                        "roi_y_start": 10,
+                        "roi_y_end": 60,
+                        "left_x": 5,
+                        "right_x": 25,
+                        "center_x": 15,
+                        "estimated_width": 20,
+                    },
+                    {
+                        "image_id": "IMG_NEW",
+                        "source_filename": "new.png",
+                        "candidate_index": 1,
+                        "width": 100,
+                        "height": 80,
+                        "roi_y_start": 12,
+                        "roi_y_end": 62,
+                        "left_x": 30,
+                        "right_x": 50,
+                        "center_x": 40,
+                        "estimated_width": 20,
+                        "category": "M",
+                    },
+                ],
+            )
+            (export_root / "review_restore_export.csv").write_text(csv_text, encoding="utf-8")
+
+            summary = review_store.restore_existing_review_restore_export(
+                {"IMG_NEW": (100, 80)},
+                {"IMG_NEW": "new.png"},
+            )
+            candidate_rows = _read_rows(export_root / "lane_boundary_candidates_review.csv")
+            annotation_rows = _read_rows(export_root / "lane_annotations_review.csv")
+
+        self.assertEqual(summary["restored_image_count"], 1)
+        self.assertEqual(candidate_rows[0]["image_id"], "IMG_NEW")
+        self.assertEqual(annotation_rows[0]["category"], "M")
+
 
 if __name__ == "__main__":
     unittest.main()
