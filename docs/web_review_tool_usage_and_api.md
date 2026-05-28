@@ -63,7 +63,40 @@ Contains:
 
 ---
 
-## 3A. 导入训练 CSV 恢复编辑
+## 3A. CSV Import Modes
+
+The action panel has two different CSV import buttons:
+
+### `Import restore CSV`
+
+Use this for reproducible segmentation recovery. It imports `review_restore_export.csv` and writes the restored ROI/lane geometry back into the saved reviewed CSV files under `Web/review_exports/`.
+
+Required restore columns include:
+
+- `image_id`
+- `source_filename`
+- `candidate_index`
+- `width`
+- `height`
+- `roi_y_start`
+- `roi_y_end`
+- `left_x`
+- `right_x`
+
+If `category` is present, it is also restored into `lane_annotations_review.csv`.
+
+### `Import annotation CSV`
+
+Use this only when you want a temporary annotation edit session. It accepts:
+
+- `lane_annotations_review.csv`
+- `training_lanes_export.csv`
+
+This mode loads category/label rows into memory for review. It does not overwrite the saved reviewed geometry until the user clicks `Save current reviewed CSV`.
+
+---
+
+## 3B. Legacy Annotation Import Notes
 
 左侧操作栏新增 `导入训练CSV` 按钮。
 
@@ -285,6 +318,10 @@ The left action panel now provides two additional export actions:
 
 These exports are additive and do not overwrite the existing review CSV semantics.
 
+`review_restore_export.csv` is the file to use when another machine needs to reproduce the reviewed segmentation state. Import it with `Import restore CSV`.
+
+`training_lanes_export.csv` is the downstream training table. It is not the primary restore file, although the app can read it through `Import annotation CSV` for temporary label review.
+
 ---
 
 ## 10. Reset Behavior
@@ -432,7 +469,9 @@ Each boundary row typically includes:
 ```
 
 ## `POST /api/reload`
-Reloads current CSV state into the backend repository without rerunning automatic segmentation.
+Clears any temporary imported annotation session and reloads saved reviewed CSV state into the backend repository without rerunning automatic segmentation.
+
+Use this when the UI is still showing an imported temporary session and you want to return to the saved files under `Web/review_exports/`.
 
 ## `POST /api/dataset/update`
 Runs the dataset refresh pipeline used by the `更新数据集` button.

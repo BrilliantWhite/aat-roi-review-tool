@@ -21,7 +21,8 @@ const TRANSLATIONS = {
             prev: '上一张',
             next: '下一张',
             updateDataset: '更新数据集',
-            importTrainingCsv: '导入训练CSV',
+            importReviewRestore: '导入可复现分割CSV',
+            importTrainingCsv: '导入标注CSV',
             exportReviewRestore: '导出可复现分割CSV',
             exportTrainingCsv: '导出训练CSV',
             reloadSaved: '从已保存结果全局刷新',
@@ -95,6 +96,7 @@ const TRANSLATIONS = {
         confirm: {
             reloadSaved: 'Current unsaved drafts will be discarded. Continue?',
             updateDataset: '更新数据集会重新扫描 dataset/Originial/ 并重跑自动分割；当前未保存修改会被丢弃。是否继续？',
+            importReviewRestore: 'Importing review_restore_export.csv will overwrite saved reviewed CSV rows for the matching images. Continue?',
             importTrainingCsv: 'Current unsaved drafts will be discarded after import. Continue?',
             exportTrainingWithoutUnlabeled: 'Export unlabeled lanes as unknown? Click OK for yes, Cancel to skip unlabeled lanes.',
         },
@@ -102,7 +104,8 @@ const TRANSLATIONS = {
             saveSuccess: '已保存当前图 reviewed CSV',
             reloadSavedSuccess: '已从保存结果重新同步页面',
             updateDatasetSuccess: (imageCount, addedQualityRows) => `已更新数据集：${imageCount} 张图，新增 ${addedQualityRows} 条质量报告占位行`,
-            importTrainingCsvSuccess: (imageCount, laneCount) => `已导入训练CSV：${imageCount} 张图，${laneCount} 条泳道`,
+            importReviewRestoreSuccess: (imageCount, laneCount) => `已导入可复现分割CSV：${imageCount} 张图，${laneCount} 条泳道`,
+            importTrainingCsvSuccess: (imageCount, laneCount) => `已导入标注CSV：${imageCount} 张图，${laneCount} 条泳道`,
             exportReviewRestoreSuccess: (imageCount, laneCount) => `已导出可复现分割CSV：${imageCount} 张图，${laneCount} 条泳道`,
             exportTrainingCsvSuccess: (imageCount, laneCount, includeUnlabeled) => `已导出训练CSV：${imageCount} 张图，${laneCount} 条泳道${includeUnlabeled ? '（未标注=unknown）' : '（已跳过未标注）'}`,
             initFailed: '初始化失败',
@@ -128,7 +131,8 @@ const TRANSLATIONS = {
             prev: 'Previous',
             next: 'Next',
             updateDataset: 'Update dataset',
-            importTrainingCsv: 'Import training CSV',
+            importReviewRestore: 'Import restore CSV',
+            importTrainingCsv: 'Import annotation CSV',
             exportReviewRestore: 'Export restore CSV',
             exportTrainingCsv: 'Export training CSV',
             reloadSaved: 'Refresh all from saved results',
@@ -202,13 +206,18 @@ const TRANSLATIONS = {
         confirm: {
             reloadSaved: 'Current unsaved drafts will be discarded. Continue?',
             updateDataset: 'Updating the dataset will rescan dataset/Originial/ and rerun automatic segmentation. Current unsaved drafts will be discarded. Continue?',
+            importReviewRestore: 'Importing review_restore_export.csv will overwrite saved reviewed CSV rows for the matching images. Continue?',
             importTrainingCsv: 'Current unsaved drafts will be discarded after import. Continue?',
+            exportTrainingWithoutUnlabeled: 'Export unlabeled lanes as unknown? Click OK for yes, Cancel to skip unlabeled lanes.',
         },
         toast: {
             saveSuccess: 'Current reviewed CSV saved',
             reloadSavedSuccess: 'Page resynced from saved results',
             updateDatasetSuccess: (imageCount, addedQualityRows) => `Dataset updated: ${imageCount} images, ${addedQualityRows} new quality placeholder rows`,
-            importTrainingCsvSuccess: (imageCount, laneCount) => `Imported training CSV: ${imageCount} images, ${laneCount} lanes`,
+            importReviewRestoreSuccess: (imageCount, laneCount) => `Imported restore CSV: ${imageCount} images, ${laneCount} lanes`,
+            importTrainingCsvSuccess: (imageCount, laneCount) => `Imported annotation CSV: ${imageCount} images, ${laneCount} lanes`,
+            exportReviewRestoreSuccess: (imageCount, laneCount) => `Exported restore CSV: ${imageCount} images, ${laneCount} lanes`,
+            exportTrainingCsvSuccess: (imageCount, laneCount, includeUnlabeled) => `Exported training CSV: ${imageCount} images, ${laneCount} lanes${includeUnlabeled ? ' (unlabeled=unknown)' : ' (unlabeled skipped)'}`,
             initFailed: 'Initialization failed',
         },
     },
@@ -269,7 +278,9 @@ const laneModalCancelEl = document.getElementById('btn-lane-modal-cancel');
 const laneModalSaveEl = document.getElementById('btn-lane-modal-save');
 const deleteLaneBtnEl = document.getElementById('btn-delete-lane');
 const trainingCsvInputEl = document.getElementById('training-csv-input');
+const restoreCsvInputEl = document.getElementById('restore-csv-input');
 const updateDatasetBtnEl = document.getElementById('btn-update-dataset');
+const importReviewRestoreBtnEl = document.getElementById('btn-import-review-restore');
 const importTrainingCsvBtnEl = document.getElementById('btn-import-training-csv');
 const exportReviewRestoreBtnEl = document.getElementById('btn-export-review-restore');
 const exportTrainingCsvBtnEl = document.getElementById('btn-export-training-csv');
@@ -338,6 +349,7 @@ function applyLanguage() {
     prevBtnEl.textContent = t('controls.prev');
     nextBtnEl.textContent = t('controls.next');
     updateDatasetBtnEl.textContent = t('controls.updateDataset');
+    importReviewRestoreBtnEl.textContent = t('controls.importReviewRestore');
     importTrainingCsvBtnEl.textContent = t('controls.importTrainingCsv');
     exportReviewRestoreBtnEl.textContent = t('controls.exportReviewRestore');
     exportTrainingCsvBtnEl.textContent = t('controls.exportTrainingCsv');
@@ -665,8 +677,22 @@ async function uploadTrainingCsv(file) {
         body: formData,
     });
     if (!response.ok) {
-        const body = await response.json().catch(() => ({ detail: '导入失败' }));
-        throw new Error(body.detail || '导入失败');
+        const body = await response.json().catch(() => ({ detail: 'Import failed' }));
+        throw new Error(body.detail || 'Import failed');
+    }
+    return response.json();
+}
+
+async function uploadReviewRestoreCsv(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/api/import/review-restore', {
+        method: 'POST',
+        body: formData,
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({ detail: 'Import failed' }));
+        throw new Error(body.detail || 'Import failed');
     }
     return response.json();
 }
@@ -1338,6 +1364,23 @@ async function importTrainingCsvFromPicker() {
     trainingCsvInputEl.value = '';
 }
 
+async function importReviewRestoreCsvFromPicker() {
+    const [file] = restoreCsvInputEl.files || [];
+    if (!file) {
+        return;
+    }
+    if (!ensureProceedWithDirty(t('confirm.importReviewRestore'))) {
+        restoreCsvInputEl.value = '';
+        return;
+    }
+    const summary = await uploadReviewRestoreCsv(file);
+    clearAllDrafts();
+    await initializeData(0);
+    clearDirty();
+    showToast(t('toast.importReviewRestoreSuccess', summary.restored_image_count, summary.restored_lane_count));
+    restoreCsvInputEl.value = '';
+}
+
 async function resetScope(scope) {
     if (!state.payload) return;
     const isAll = scope === 'all';
@@ -1411,6 +1454,11 @@ overlayEl.addEventListener('click', handleOverlayClick);
 overlayEl.addEventListener('mouseup', stopDrag);
 overlayEl.addEventListener('mouseleave', handleOverlayMouseLeave);
 updateDatasetBtnEl.addEventListener('click', () => updateDataset().catch(error => showToast(error.message)));
+importReviewRestoreBtnEl.addEventListener('click', () => restoreCsvInputEl.click());
+restoreCsvInputEl.addEventListener('change', () => importReviewRestoreCsvFromPicker().catch(error => {
+    restoreCsvInputEl.value = '';
+    showToast(error.message);
+}));
 importTrainingCsvBtnEl.addEventListener('click', () => trainingCsvInputEl.click());
 trainingCsvInputEl.addEventListener('change', () => importTrainingCsvFromPicker().catch(error => {
     trainingCsvInputEl.value = '';

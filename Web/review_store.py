@@ -121,6 +121,17 @@ TRAINING_IMPORT_REQUIRED_COLUMNS = {
     "category",
 }
 
+TRAINING_IMPORT_ALTERNATE_COLUMNS = {
+    "image_id",
+    "source_filename",
+    "candidate_index",
+    "left_x",
+    "right_x",
+    "roi_y_start",
+    "roi_y_end",
+    "label",
+}
+
 _IMPORTED_ANNOTATION_ROWS: list[dict[str, str]] = []
 
 RESTORE_EXPORT_FIELDNAMES = [
@@ -166,7 +177,26 @@ TRAINING_EXPORT_FIELDNAMES = [
 
 
 def _raise_import_error(message: str) -> None:
-    raise ValueError(f"训练CSV校验失败：{message}")
+    raise ValueError(f"CSV validation failed: {message}")
+
+
+def _parse_int(value: Any, field_name: str, row_number: int) -> int:
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError) as exc:
+        _raise_import_error(f"row {row_number}: field {field_name} must be numeric")
+        raise exc
+
+
+def _candidate_index_or_none(row: dict[str, Any]) -> int | None:
+    try:
+        return int(float(row.get("candidate_index") or 0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _candidate_sort_key(row: dict[str, Any]) -> tuple[str, int]:
+    return str(row.get("image_id", "")), _candidate_index_or_none(row) or 0
 
 
 def _timestamp() -> str:
@@ -391,8 +421,11 @@ def clear_imported_annotation_rows_for_image(image_id: str) -> None:
 def build_annotation_index() -> dict[str, dict[int, dict[str, str]]]:
     rows_by_image: dict[str, dict[int, dict[str, str]]] = defaultdict(dict)
     for row in load_annotation_rows():
-        candidate_index = int(row.get("candidate_index") or 0)
-        rows_by_image[row["image_id"]][candidate_index] = row
+        image_id = str(row.get("image_id", "")).strip()
+        candidate_index = _candidate_index_or_none(row)
+        if not image_id or candidate_index is None:
+            continue
+        rows_by_image[image_id][candidate_index] = row
     return rows_by_image
 
 
@@ -404,7 +437,7 @@ def build_review_indexes() -> tuple[dict[str, dict[str, str]], dict[str, list[di
     for row in candidate_rows:
         candidates_by_image[row["image_id"]].append(row)
     for rows in candidates_by_image.values():
-        rows.sort(key=lambda row: int(row["candidate_index"]))
+        rows.sort(key=_candidate_sort_key)
 
     manifest_by_image = {row["image_id"]: row for row in manifest_rows}
     return roi_by_image, candidates_by_image, manifest_by_image
@@ -413,9 +446,11 @@ def build_review_indexes() -> tuple[dict[str, dict[str, str]], dict[str, list[di
 def build_imported_annotation_index() -> dict[str, list[dict[str, str]]]:
     rows_by_image: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in load_imported_annotation_rows():
-        rows_by_image[row["image_id"]].append(row)
+        image_id = str(row.get("image_id", "")).strip()
+        if image_id:
+            rows_by_image[image_id].append(row)
     for rows in rows_by_image.values():
-        rows.sort(key=lambda row: int(row.get("candidate_index") or 0))
+        rows.sort(key=_candidate_sort_key)
     return rows_by_image
 
 
@@ -425,53 +460,74 @@ def validate_and_normalize_training_annotation_rows(
     image_sources: dict[str, str],
 ) -> list[dict[str, Any]]:
     if not rows:
-        _raise_import_error("文件没有可导入的数据行")
+        _raise_import_error("file has no importable data rows")
 
     normalized: list[dict[str, Any]] = []
     seen_by_image: dict[str, set[int]] = defaultdict(set)
 
     for row_number, row in enumerate(rows, start=2):
-        missing = [column for column in TRAINING_IMPORT_REQUIRED_COLUMNS if column not in row]
+        has_annotation_schema = TRAINING_IMPORT_REQUIRED_COLUMNS.issubset(row.keys())
+        has_training_export_schema = TRAINING_IMPORT_ALTERNATE_COLUMNS.issubset(row.keys())
+        if has_annotation_schema:
+            y_start_key = "y_start"
+            y_end_key = "y_end"
+            category_key = "category"
+        elif has_training_export_schema:
+            y_start_key = "roi_y_start"
+            y_end_key = "roi_y_end"
+            category_key = "label"
+        else:
+            required = TRAINING_IMPORT_REQUIRED_COLUMNS | TRAINING_IMPORT_ALTERNATE_COLUMNS
+            missing = [column for column in sorted(required) if column not in row]
+            _raise_import_error(
+                "missing columns for annotation import. Use lane_annotations_review.csv, "
+                "or training_lanes_export.csv if you only need labels/ROI geometry. "
+                f"Missing: {', '.join(missing)}"
+            )
+            continue
+
+        missing = [
+            column
+            for column in ("image_id", "source_filename", "candidate_index", "left_x", "right_x", y_start_key, y_end_key, category_key)
+            if column not in row
+        ]
         if missing:
-            _raise_import_error(f"缺少列：{', '.join(sorted(missing))}")
+            _raise_import_error(f"missing columns: {', '.join(sorted(missing))}")
 
         image_id = str(row.get("image_id", "")).strip()
         source_filename = str(row.get("source_filename", "")).strip()
-        category = str(row.get("category", "")).strip()
+        category = str(row.get(category_key, "")).strip()
         if not image_id:
-            _raise_import_error(f"第 {row_number} 行 image_id 为空")
+            _raise_import_error(f"row {row_number}: image_id is blank")
         if image_id not in image_sizes:
-            _raise_import_error(f"第 {row_number} 行 image_id 不存在于当前数据集：{image_id}")
+            _raise_import_error(f"row {row_number}: image_id is not in the current dataset: {image_id}")
         if not source_filename:
-            _raise_import_error(f"第 {row_number} 行 source_filename 为空")
+            _raise_import_error(f"row {row_number}: source_filename is blank")
         expected_source_filename = image_sources.get(image_id, "")
         if source_filename != expected_source_filename:
             _raise_import_error(
-                f"第 {row_number} 行 source_filename 与当前数据集不匹配：{image_id} -> {source_filename}"
+                f"row {row_number}: source_filename does not match current dataset for {image_id}: {source_filename}"
             )
         if not category:
-            _raise_import_error(f"第 {row_number} 行 category 为空")
+            _raise_import_error(f"row {row_number}: category/label is blank")
 
-        try:
-            candidate_index = int(float(row.get("candidate_index", "")))
-            left_x = int(float(row.get("left_x", "")))
-            right_x = int(float(row.get("right_x", "")))
-            y_start = int(float(row.get("y_start", "")))
-            y_end = int(float(row.get("y_end", "")))
-        except ValueError:
-            _raise_import_error(f"第 {row_number} 行存在无法解析的数值字段")
+        candidate_index = _parse_int(row.get("candidate_index", ""), "candidate_index", row_number)
+        left_x = _parse_int(row.get("left_x", ""), "left_x", row_number)
+        right_x = _parse_int(row.get("right_x", ""), "right_x", row_number)
+        y_start = _parse_int(row.get(y_start_key, ""), y_start_key, row_number)
+        y_end = _parse_int(row.get(y_end_key, ""), y_end_key, row_number)
 
         width, height = image_sizes[image_id]
         if left_x >= right_x:
-            _raise_import_error(f"第 {row_number} 行 left_x 必须小于 right_x")
+            _raise_import_error(f"row {row_number}: left_x must be smaller than right_x")
         if y_start >= y_end:
-            _raise_import_error(f"第 {row_number} 行 y_start 必须小于 y_end")
+            _raise_import_error(f"row {row_number}: ROI y_start must be smaller than y_end")
         if left_x < 0 or right_x > width:
-            _raise_import_error(f"第 {row_number} 行横向坐标超出图片范围")
+            _raise_import_error(f"row {row_number}: horizontal coordinates are outside image bounds")
         if y_start < 0 or y_end > height:
-            _raise_import_error(f"第 {row_number} 行纵向坐标超出图片范围")
+            _raise_import_error(f"row {row_number}: vertical coordinates are outside image bounds")
         if candidate_index in seen_by_image[image_id]:
-            _raise_import_error(f"第 {row_number} 行 candidate_index 在同图内重复：{candidate_index}")
+            _raise_import_error(f"row {row_number}: duplicate candidate_index within image: {candidate_index}")
 
         seen_by_image[image_id].add(candidate_index)
 
@@ -499,13 +555,247 @@ def import_training_annotation_csv(
 ) -> dict[str, Any]:
     reader = csv.DictReader(io.StringIO(csv_text))
     if reader.fieldnames is None:
-        _raise_import_error("CSV 缺少表头")
+        _raise_import_error("CSV header is missing")
     rows = list(reader)
     normalized = validate_and_normalize_training_annotation_rows(rows, image_sizes, image_sources)
     save_imported_annotation_rows(normalized)
     return {
         "imported_image_count": len({row["image_id"] for row in normalized}),
         "imported_lane_count": len(normalized),
+    }
+
+
+def import_review_restore_csv(
+    csv_text: str,
+    image_sizes: dict[str, tuple[int, int]],
+    image_sources: dict[str, str],
+) -> dict[str, Any]:
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if reader.fieldnames is None:
+        _raise_import_error("CSV header is missing")
+
+    rows = list(reader)
+    if not rows:
+        _raise_import_error("file has no importable data rows")
+
+    required_columns = {
+        "image_id",
+        "source_filename",
+        "candidate_index",
+        "width",
+        "height",
+        "roi_y_start",
+        "roi_y_end",
+        "left_x",
+        "right_x",
+    }
+    missing_from_header = sorted(column for column in required_columns if column not in (reader.fieldnames or []))
+    if missing_from_header:
+        _raise_import_error(
+            "review restore import requires review_restore_export.csv. "
+            f"Missing columns: {', '.join(missing_from_header)}"
+        )
+
+    updated_at = _timestamp()
+    restore_rows_by_image: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    seen_by_image: dict[str, set[int]] = defaultdict(set)
+
+    for row_number, row in enumerate(rows, start=2):
+        image_id = str(row.get("image_id", "")).strip()
+        source_filename = str(row.get("source_filename", "")).strip()
+        if not image_id:
+            _raise_import_error(f"row {row_number}: image_id is blank")
+        if image_id not in image_sizes:
+            _raise_import_error(f"row {row_number}: image_id is not in the current dataset: {image_id}")
+        expected_source_filename = image_sources.get(image_id, "")
+        if source_filename != expected_source_filename:
+            _raise_import_error(
+                f"row {row_number}: source_filename does not match current dataset for {image_id}: {source_filename}"
+            )
+
+        width, height = image_sizes[image_id]
+        row_width = _parse_int(row.get("width", ""), "width", row_number)
+        row_height = _parse_int(row.get("height", ""), "height", row_number)
+        if row_width != width or row_height != height:
+            _raise_import_error(
+                f"row {row_number}: image size does not match current dataset for {image_id}: "
+                f"{row_width}x{row_height}, expected {width}x{height}"
+            )
+
+        candidate_index = _parse_int(row.get("candidate_index", ""), "candidate_index", row_number)
+        if candidate_index in seen_by_image[image_id]:
+            _raise_import_error(f"row {row_number}: duplicate candidate_index within image: {candidate_index}")
+        seen_by_image[image_id].add(candidate_index)
+
+        roi_y_start = _parse_int(row.get("roi_y_start", ""), "roi_y_start", row_number)
+        roi_y_end = _parse_int(row.get("roi_y_end", ""), "roi_y_end", row_number)
+        left_x = _parse_int(row.get("left_x", ""), "left_x", row_number)
+        right_x = _parse_int(row.get("right_x", ""), "right_x", row_number)
+        center_x = _parse_int(row.get("center_x") or round((left_x + right_x) / 2), "center_x", row_number)
+        estimated_width = _parse_int(row.get("estimated_width") or (right_x - left_x), "estimated_width", row_number)
+
+        if left_x >= right_x:
+            _raise_import_error(f"row {row_number}: left_x must be smaller than right_x")
+        if roi_y_start >= roi_y_end:
+            _raise_import_error(f"row {row_number}: roi_y_start must be smaller than roi_y_end")
+        if left_x < 0 or right_x > width:
+            _raise_import_error(f"row {row_number}: horizontal coordinates are outside image bounds")
+        if roi_y_start < 0 or roi_y_end > height:
+            _raise_import_error(f"row {row_number}: vertical coordinates are outside image bounds")
+
+        restore_rows_by_image[image_id].append(
+            {
+                "image_id": image_id,
+                "source_filename": source_filename,
+                "width": width,
+                "height": height,
+                "candidate_index": candidate_index,
+                "roi_y_start": roi_y_start,
+                "roi_y_end": roi_y_end,
+                "left_x": left_x,
+                "right_x": right_x,
+                "center_x": center_x,
+                "estimated_width": estimated_width,
+                "status": str(row.get("status", "")).strip() or "accepted",
+                "source": str(row.get("source", "")).strip() or "review_restore_import",
+                "confidence": str(row.get("confidence", "")).strip() or "restored",
+                "is_manual_added": str(row.get("is_manual_added", "false")).strip().lower() == "true",
+                "notes": str(row.get("notes", "")).strip(),
+                "category": str(row.get("category", "")).strip(),
+            }
+        )
+
+    ensure_review_exports()
+    existing_roi_rows, existing_candidate_rows, existing_manifest_rows = load_review_rows()
+    restored_image_ids = set(restore_rows_by_image)
+    roi_rows = [row for row in existing_roi_rows if row.get("image_id") not in restored_image_ids]
+    candidate_rows = [row for row in existing_candidate_rows if row.get("image_id") not in restored_image_ids]
+    manifest_rows = [row for row in existing_manifest_rows if row.get("image_id") not in restored_image_ids]
+    annotation_rows = [row for row in load_annotation_rows() if row.get("image_id") not in restored_image_ids]
+
+    for image_id, image_rows in restore_rows_by_image.items():
+        image_rows.sort(key=lambda row: int(row["candidate_index"]))
+        first = image_rows[0]
+        roi_y_start = min(int(row["roi_y_start"]) for row in image_rows)
+        roi_y_end = max(int(row["roi_y_end"]) for row in image_rows)
+        width = int(first["width"])
+        height = int(first["height"])
+        source_filename = str(first["source_filename"])
+
+        roi_rows.append(
+            {
+                "image_id": image_id,
+                "source_filename": source_filename,
+                "width": width,
+                "height": height,
+                "y_start": roi_y_start,
+                "y_end": roi_y_end,
+                "roi_height": roi_y_end - roi_y_start,
+                "auto_y_start": roi_y_start,
+                "auto_y_end": roi_y_end,
+                "roi_confidence": "restored",
+                "roi_reason": "review_restore_import",
+                "roi_quality_flag": "",
+                "review_status": "reviewed",
+                "notes": "restored from review_restore_export.csv",
+                "updated_at": updated_at,
+            }
+        )
+
+        center_values: list[float] = []
+        width_values: list[float] = []
+        accepted_count = 0
+
+        for row in image_rows:
+            status = str(row["status"])
+            if status in ACCEPTED_STATUSES:
+                accepted_count += 1
+            center_values.append(float(row["center_x"]))
+            width_values.append(float(row["estimated_width"]))
+            candidate_rows.append(
+                {
+                    "image_id": image_id,
+                    "source_filename": source_filename,
+                    "width": width,
+                    "height": height,
+                    "candidate_index": int(row["candidate_index"]),
+                    "left_x": int(row["left_x"]),
+                    "right_x": int(row["right_x"]),
+                    "center_x": int(row["center_x"]),
+                    "estimated_width": int(row["estimated_width"]),
+                    "y_start": roi_y_start,
+                    "y_end": roi_y_end,
+                    "auto_left_x": int(row["left_x"]),
+                    "auto_right_x": int(row["right_x"]),
+                    "auto_center_x": int(row["center_x"]),
+                    "auto_estimated_width": int(row["estimated_width"]),
+                    "auto_status": status,
+                    "status": status,
+                    "source": row["source"],
+                    "confidence": row["confidence"],
+                    "is_manual_added": "true" if row["is_manual_added"] else "false",
+                    "notes": row["notes"],
+                    "updated_at": updated_at,
+                }
+            )
+
+            if row["category"]:
+                annotation_rows.append(
+                    {
+                        "image_id": image_id,
+                        "source_filename": source_filename,
+                        "candidate_index": int(row["candidate_index"]),
+                        "left_x": int(row["left_x"]),
+                        "right_x": int(row["right_x"]),
+                        "y_start": roi_y_start,
+                        "y_end": roi_y_end,
+                        "category": row["category"],
+                        "updated_at": updated_at,
+                    }
+                )
+
+        center_values.sort()
+        spacings = [center_values[index + 1] - center_values[index] for index in range(len(center_values) - 1)]
+        manifest_rows.append(
+            {
+                "image_id": image_id,
+                "source_filename": source_filename,
+                "width": width,
+                "height": height,
+                "y_start": roi_y_start,
+                "y_end": roi_y_end,
+                "roi_height": roi_y_end - roi_y_start,
+                "reviewed_boundary_count": len(image_rows),
+                "accepted_boundary_count": accepted_count,
+                "median_center_spacing_px": _median_or_blank(spacings),
+                "median_estimated_width_px": _median_or_blank(width_values),
+                "min_estimated_width_px": _min_or_blank(width_values),
+                "max_estimated_width_px": _max_or_blank(width_values),
+                "quality_flag": "",
+                "detection_quality_flag": "",
+                "review_status": "reviewed",
+                "notes": "restored from review_restore_export.csv",
+                "updated_at": updated_at,
+            }
+        )
+
+    roi_rows.sort(key=lambda row: row["image_id"])
+    candidate_rows.sort(key=_candidate_sort_key)
+    manifest_rows.sort(key=lambda row: row["image_id"])
+    annotation_rows.sort(key=_candidate_sort_key)
+
+    _write_csv(REVIEW_ROI_PATH, ROI_REVIEW_FIELDNAMES, roi_rows)
+    _write_csv(REVIEW_CANDIDATES_PATH, CANDIDATE_REVIEW_FIELDNAMES, candidate_rows)
+    _write_csv(REVIEW_MANIFEST_PATH, MANIFEST_REVIEW_FIELDNAMES, manifest_rows)
+    _write_csv(REVIEW_ANNOTATIONS_PATH, ANNOTATION_FIELDNAMES, annotation_rows)
+    with REVIEW_ANNOTATIONS_JSONL_PATH.open("w", encoding="utf-8") as jsonl_file:
+        for row in annotation_rows:
+            jsonl_file.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    clear_imported_annotation_rows()
+    return {
+        "restored_image_count": len(restored_image_ids),
+        "restored_lane_count": sum(len(rows) for rows in restore_rows_by_image.values()),
     }
 
 
@@ -642,7 +932,7 @@ def save_image_review(
     )
 
     roi_rows.sort(key=lambda row: row["image_id"])
-    candidate_rows.sort(key=lambda row: (row["image_id"], int(row["candidate_index"])))
+    candidate_rows.sort(key=_candidate_sort_key)
     manifest_rows.sort(key=lambda row: row["image_id"])
 
     _write_csv(REVIEW_ROI_PATH, ROI_REVIEW_FIELDNAMES, roi_rows)
@@ -679,7 +969,7 @@ def save_image_review(
             )
 
         all_annotation_rows = existing_annotation_rows + new_annotation_rows
-        all_annotation_rows.sort(key=lambda row: (row["image_id"], int(row.get("candidate_index") or 0)))
+        all_annotation_rows.sort(key=_candidate_sort_key)
 
         if write_annotation_csv:
             _write_csv(REVIEW_ANNOTATIONS_PATH, ANNOTATION_FIELDNAMES, all_annotation_rows)

@@ -123,6 +123,13 @@ Web/review_exports/
 
 These files are ignored by Git by default because they may contain research data.
 
+## CSV Import and Export
+
+- `review_restore_export.csv` is the reproducible segmentation file. Use `Export restore CSV` to create it, and `Import restore CSV` to restore reviewed ROI/lane geometry later.
+- `lane_annotations_review.csv` is the lane-level annotation sidecar. Use `Import annotation CSV` when you only want to load category labels as a temporary edit session.
+- `training_lanes_export.csv` is the downstream training table. It can also be imported as annotation input, but it is not the preferred restore file because its purpose is model training rather than full review-state recovery.
+- `Refresh all from saved results` clears temporary imported annotation state and reloads the saved reviewed CSV files from `Web/review_exports/`.
+
 ## Command-Line Pipeline
 
 The Web `Update dataset` button runs this sequence:

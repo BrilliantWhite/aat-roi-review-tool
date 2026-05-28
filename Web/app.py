@@ -19,6 +19,7 @@ from review_store import (
     delete_category_suggestion,
     export_review_restore_csv,
     export_training_lanes_csv,
+    import_review_restore_csv,
     import_training_annotation_csv,
     load_category_suggestions,
     reset_image_review,
@@ -143,13 +144,13 @@ def get_image_raw(image_id: str) -> FileResponse:
 @app.post("/api/import/training-annotations")
 async def import_training_annotations(file: UploadFile = File(...)) -> dict[str, Any]:
     if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="请上传 CSV 文件")
+        raise HTTPException(status_code=400, detail="Please upload a CSV file")
 
     raw_bytes = await file.read()
     try:
         csv_text = raw_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=400, detail="CSV 必须使用 UTF-8 编码") from exc
+        raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded") from exc
 
     image_sizes = {
         image_id: (record.width, record.height)
@@ -168,6 +169,34 @@ async def import_training_annotations(file: UploadFile = File(...)) -> dict[str,
     return {"ok": True, **summary}
 
 
+@app.post("/api/import/review-restore")
+async def import_review_restore(file: UploadFile = File(...)) -> dict[str, Any]:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a CSV file")
+
+    raw_bytes = await file.read()
+    try:
+        csv_text = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded") from exc
+
+    image_sizes = {
+        image_id: (record.width, record.height)
+        for image_id, record in repository.inventory_records.items()
+    }
+    image_sources = {
+        image_id: record.source_filename
+        for image_id, record in repository.inventory_records.items()
+    }
+    try:
+        summary = import_review_restore_csv(csv_text, image_sizes, image_sources)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    repository.refresh()
+    return {"ok": True, **summary}
+
+
 @app.delete("/api/import/training-annotations")
 def clear_imported_training_annotations() -> dict[str, Any]:
     clear_imported_annotation_rows()
@@ -177,6 +206,7 @@ def clear_imported_training_annotations() -> dict[str, Any]:
 
 @app.post("/api/reload")
 def reload_state() -> dict[str, Any]:
+    clear_imported_annotation_rows()
     repository.refresh()
     return {"ok": True}
 
@@ -193,13 +223,19 @@ def update_dataset() -> dict[str, Any]:
 
 @app.post("/api/exports/review-restore")
 def export_review_restore() -> dict[str, Any]:
-    summary = export_review_restore_csv()
+    try:
+        summary = export_review_restore_csv()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **summary}
 
 
 @app.post("/api/exports/training-lanes")
 def export_training_lanes(payload: ExportTrainingPayload) -> dict[str, Any]:
-    summary = export_training_lanes_csv(include_unlabeled=payload.include_unlabeled)
+    try:
+        summary = export_training_lanes_csv(include_unlabeled=payload.include_unlabeled)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **summary}
 
 
