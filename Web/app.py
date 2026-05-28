@@ -244,7 +244,12 @@ def update_dataset() -> dict[str, Any]:
 @app.post("/api/exports/review-restore")
 def export_review_restore() -> dict[str, Any]:
     try:
-        summary = export_review_restore_csv(valid_image_ids=set(repository.inventory_records))
+        summary = export_review_restore_csv(
+            valid_image_sources={
+                image_id: record.source_filename
+                for image_id, record in repository.inventory_records.items()
+            }
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **summary}
@@ -255,7 +260,10 @@ def export_training_lanes(payload: ExportTrainingPayload) -> dict[str, Any]:
     try:
         summary = export_training_lanes_csv(
             include_unlabeled=payload.include_unlabeled,
-            valid_image_ids=set(repository.inventory_records),
+            valid_image_sources={
+                image_id: record.source_filename
+                for image_id, record in repository.inventory_records.items()
+            },
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -232,20 +232,42 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) ->
             writer.writerow({key: row.get(key, "") for key in fieldnames})
 
 
-def _read_csv_by_image(path: Path) -> dict[str, dict[str, str]]:
-    return {row["image_id"]: row for row in _read_csv(path)}
+def _write_export_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> Path:
+    try:
+        _write_csv(path, fieldnames, rows)
+        return path
+    except PermissionError:
+        fallback_path = path.with_name(f"{path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{path.suffix}")
+        _write_csv(fallback_path, fieldnames, rows)
+        return fallback_path
 
 
-def export_review_restore_csv(valid_image_ids: set[str] | None = None) -> dict[str, Any]:
+def _read_csv_by_image(path: Path, valid_image_sources: dict[str, str] | None = None) -> dict[str, dict[str, str]]:
+    return {
+        row["image_id"]: row
+        for row in _read_csv(path)
+        if _row_matches_current_source(row, valid_image_sources)
+    }
+
+
+def _row_matches_current_source(row: dict[str, Any], valid_image_sources: dict[str, str] | None = None) -> bool:
+    if valid_image_sources is None:
+        return True
+    image_id = str(row.get("image_id", "")).strip()
+    source_filename = str(row.get("source_filename", "")).strip()
+    return bool(image_id) and valid_image_sources.get(image_id) == source_filename
+
+
+def export_review_restore_csv(valid_image_sources: dict[str, str] | None = None) -> dict[str, Any]:
     ensure_review_exports()
-    roi_by_image = _read_csv_by_image(REVIEW_ROI_PATH)
+    roi_by_image = _read_csv_by_image(REVIEW_ROI_PATH, valid_image_sources)
     annotation_index = build_annotation_index()
     candidate_rows = _read_csv(REVIEW_CANDIDATES_PATH)
     export_rows: list[dict[str, Any]] = []
 
     for row in candidate_rows:
         image_id = row["image_id"]
-        if valid_image_ids is not None and image_id not in valid_image_ids:
+        if not _row_matches_current_source(row, valid_image_sources):
             continue
         roi_row = roi_by_image.get(image_id)
         if not roi_row:
@@ -279,24 +301,25 @@ def export_review_restore_csv(valid_image_ids: set[str] | None = None) -> dict[s
         )
 
     export_rows.sort(key=lambda row: (row["image_id"], int(row["candidate_index"])))
-    _write_csv(REVIEW_RESTORE_EXPORT_PATH, RESTORE_EXPORT_FIELDNAMES, export_rows)
+    export_path = _write_export_csv(REVIEW_RESTORE_EXPORT_PATH, RESTORE_EXPORT_FIELDNAMES, export_rows)
     return {
-        "path": str(REVIEW_RESTORE_EXPORT_PATH),
+        "path": str(export_path),
+        "filename": export_path.name,
         "image_count": len({row["image_id"] for row in export_rows}),
         "lane_count": len(export_rows),
     }
 
 
-def export_training_lanes_csv(include_unlabeled: bool = True, valid_image_ids: set[str] | None = None) -> dict[str, Any]:
+def export_training_lanes_csv(include_unlabeled: bool = True, valid_image_sources: dict[str, str] | None = None) -> dict[str, Any]:
     ensure_review_exports()
-    roi_by_image = _read_csv_by_image(REVIEW_ROI_PATH)
+    roi_by_image = _read_csv_by_image(REVIEW_ROI_PATH, valid_image_sources)
     annotation_index = build_annotation_index()
     candidate_rows = _read_csv(REVIEW_CANDIDATES_PATH)
     export_rows: list[dict[str, Any]] = []
 
     for row in candidate_rows:
         image_id = row["image_id"]
-        if valid_image_ids is not None and image_id not in valid_image_ids:
+        if not _row_matches_current_source(row, valid_image_sources):
             continue
         roi_row = roi_by_image.get(image_id)
         if not roi_row:
@@ -334,9 +357,10 @@ def export_training_lanes_csv(include_unlabeled: bool = True, valid_image_ids: s
         )
 
     export_rows.sort(key=lambda row: (row["image_id"], int(row["candidate_index"])))
-    _write_csv(TRAINING_LANES_EXPORT_PATH, TRAINING_EXPORT_FIELDNAMES, export_rows)
+    export_path = _write_export_csv(TRAINING_LANES_EXPORT_PATH, TRAINING_EXPORT_FIELDNAMES, export_rows)
     return {
-        "path": str(TRAINING_LANES_EXPORT_PATH),
+        "path": str(export_path),
+        "filename": export_path.name,
         "image_count": len({row["image_id"] for row in export_rows}),
         "lane_count": len(export_rows),
         "include_unlabeled": include_unlabeled,
@@ -623,6 +647,8 @@ def import_review_restore_csv(
             _raise_import_error(f"row {row_number}: image_id is not in the current dataset: {image_id}")
         expected_source_filename = image_sources.get(image_id, "")
         if source_filename != expected_source_filename:
+            if skip_unknown_images:
+                continue
             _raise_import_error(
                 f"row {row_number}: source_filename does not match current dataset for {image_id}: {source_filename}"
             )

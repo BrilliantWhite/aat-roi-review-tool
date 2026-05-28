@@ -209,12 +209,65 @@ class ReviewStoreCsvTests(unittest.TestCase):
                 ],
             )
 
-            summary = review_store.export_review_restore_csv(valid_image_ids={"IMG_NEW"})
+            summary = review_store.export_review_restore_csv(valid_image_sources={"IMG_NEW": "new.png"})
             export_rows = _read_rows(export_root / "review_restore_export.csv")
 
         self.assertEqual(summary["image_count"], 1)
         self.assertEqual(summary["lane_count"], 1)
         self.assertEqual(export_rows[0]["image_id"], "IMG_NEW")
+
+    def test_training_export_skips_rows_when_reused_image_id_has_old_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            export_root = Path(tmp_dir) / "review_exports"
+            self._patch_review_paths(stack, export_root)
+            review_store._write_csv(
+                review_store.REVIEW_ROI_PATH,
+                review_store.ROI_REVIEW_FIELDNAMES,
+                [
+                    {"image_id": "IMG_0001", "source_filename": "old.png", "width": 100, "height": 80, "y_start": 10, "y_end": 60},
+                    {"image_id": "IMG_0002", "source_filename": "new.png", "width": 100, "height": 80, "y_start": 12, "y_end": 62},
+                ],
+            )
+            review_store._write_csv(
+                review_store.REVIEW_CANDIDATES_PATH,
+                review_store.CANDIDATE_REVIEW_FIELDNAMES,
+                [
+                    {
+                        "image_id": "IMG_0001",
+                        "source_filename": "old.png",
+                        "width": 100,
+                        "height": 80,
+                        "candidate_index": 1,
+                        "left_x": 5,
+                        "right_x": 25,
+                        "center_x": 15,
+                        "estimated_width": 20,
+                    },
+                    {
+                        "image_id": "IMG_0002",
+                        "source_filename": "new.png",
+                        "width": 100,
+                        "height": 80,
+                        "candidate_index": 1,
+                        "left_x": 30,
+                        "right_x": 50,
+                        "center_x": 40,
+                        "estimated_width": 20,
+                    },
+                ],
+            )
+
+            summary = review_store.export_training_lanes_csv(
+                valid_image_sources={
+                    "IMG_0001": "current.png",
+                    "IMG_0002": "new.png",
+                }
+            )
+            export_rows = _read_rows(export_root / "training_lanes_export.csv")
+
+        self.assertEqual(summary["image_count"], 1)
+        self.assertEqual(summary["lane_count"], 1)
+        self.assertEqual(export_rows[0]["image_id"], "IMG_0002")
 
     def test_restore_existing_review_restore_export_skips_stale_images(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:

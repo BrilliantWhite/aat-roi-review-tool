@@ -106,8 +106,8 @@ const TRANSLATIONS = {
             updateDatasetSuccess: (imageCount, addedQualityRows) => `已更新数据集：${imageCount} 张图，新增 ${addedQualityRows} 条质量报告占位行`,
             importReviewRestoreSuccess: (imageCount, laneCount) => `已导入可复现分割CSV：${imageCount} 张图，${laneCount} 条泳道`,
             importTrainingCsvSuccess: (imageCount, laneCount) => `已导入标注CSV：${imageCount} 张图，${laneCount} 条泳道`,
-            exportReviewRestoreSuccess: (imageCount, laneCount) => `已导出可复现分割CSV：${imageCount} 张图，${laneCount} 条泳道`,
-            exportTrainingCsvSuccess: (imageCount, laneCount, includeUnlabeled) => `已导出训练CSV：${imageCount} 张图，${laneCount} 条泳道${includeUnlabeled ? '（未标注=unknown）' : '（已跳过未标注）'}`,
+            exportReviewRestoreSuccess: (imageCount, laneCount, filename) => `已导出可复现分割CSV：${imageCount} 张图，${laneCount} 条泳道 -> ${filename}`,
+            exportTrainingCsvSuccess: (imageCount, laneCount, includeUnlabeled, filename) => `已导出训练CSV：${imageCount} 张图，${laneCount} 条泳道${includeUnlabeled ? '（未标注=unknown）' : '（已跳过未标注）'} -> ${filename}`,
             initFailed: '初始化失败',
         },
     },
@@ -216,8 +216,8 @@ const TRANSLATIONS = {
             updateDatasetSuccess: (imageCount, addedQualityRows) => `Dataset updated: ${imageCount} images, ${addedQualityRows} new quality placeholder rows`,
             importReviewRestoreSuccess: (imageCount, laneCount) => `Imported restore CSV: ${imageCount} images, ${laneCount} lanes`,
             importTrainingCsvSuccess: (imageCount, laneCount) => `Imported annotation CSV: ${imageCount} images, ${laneCount} lanes`,
-            exportReviewRestoreSuccess: (imageCount, laneCount) => `Exported restore CSV: ${imageCount} images, ${laneCount} lanes`,
-            exportTrainingCsvSuccess: (imageCount, laneCount, includeUnlabeled) => `Exported training CSV: ${imageCount} images, ${laneCount} lanes${includeUnlabeled ? ' (unlabeled=unknown)' : ' (unlabeled skipped)'}`,
+            exportReviewRestoreSuccess: (imageCount, laneCount, filename) => `Exported restore CSV: ${imageCount} images, ${laneCount} lanes -> ${filename}`,
+            exportTrainingCsvSuccess: (imageCount, laneCount, includeUnlabeled, filename) => `Exported training CSV: ${imageCount} images, ${laneCount} lanes${includeUnlabeled ? ' (unlabeled=unknown)' : ' (unlabeled skipped)'} -> ${filename}`,
             initFailed: 'Initialization failed',
         },
     },
@@ -699,7 +699,7 @@ async function uploadReviewRestoreCsv(file) {
 
 async function exportReviewRestoreCsv() {
     const payload = await fetchJson('/api/exports/review-restore', { method: 'POST' });
-    showToast(t('toast.exportReviewRestoreSuccess', payload.image_count, payload.lane_count));
+    showToast(t('toast.exportReviewRestoreSuccess', payload.image_count, payload.lane_count, payload.filename || 'review_restore_export.csv'));
 }
 
 async function exportTrainingCsv() {
@@ -709,7 +709,7 @@ async function exportTrainingCsv() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ include_unlabeled: includeUnlabeled }),
     });
-    showToast(t('toast.exportTrainingCsvSuccess', payload.image_count, payload.lane_count, payload.include_unlabeled));
+    showToast(t('toast.exportTrainingCsvSuccess', payload.image_count, payload.lane_count, payload.include_unlabeled, payload.filename || 'training_lanes_export.csv'));
 }
 
 function recomputeBoundary(boundary) {

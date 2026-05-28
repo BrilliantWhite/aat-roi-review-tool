@@ -89,6 +89,13 @@ def _build_imported_boundaries(rows: list[dict[str, str]]) -> list[dict[str, Any
     return boundaries
 
 
+def _matches_inventory_source(row: dict[str, str], inventory_records: dict[str, Any]) -> bool:
+    image_id = str(row.get("image_id", "")).strip()
+    source_filename = str(row.get("source_filename", "")).strip()
+    record = inventory_records.get(image_id)
+    return bool(record) and source_filename == record.source_filename
+
+
 class ReviewRepository:
     def __init__(self) -> None:
         ensure_review_exports()
@@ -104,6 +111,30 @@ class ReviewRepository:
         self.review_roi, self.review_candidates, self.review_manifest = build_review_indexes()
         self.annotations = build_annotation_index()
         self.imported_annotations = build_imported_annotation_index()
+        self.review_roi = {
+            image_id: row
+            for image_id, row in self.review_roi.items()
+            if _matches_inventory_source(row, self.inventory_records)
+        }
+        self.review_manifest = {
+            image_id: row
+            for image_id, row in self.review_manifest.items()
+            if _matches_inventory_source(row, self.inventory_records)
+        }
+        self.review_candidates = {
+            image_id: [row for row in rows if _matches_inventory_source(row, self.inventory_records)]
+            for image_id, rows in self.review_candidates.items()
+            if image_id in self.inventory_records
+        }
+        self.annotations = {
+            image_id: {
+                candidate_index: row
+                for candidate_index, row in rows.items()
+                if _matches_inventory_source(row, self.inventory_records)
+            }
+            for image_id, rows in self.annotations.items()
+            if image_id in self.inventory_records
+        }
 
     def list_images(self) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
