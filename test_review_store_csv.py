@@ -135,6 +135,39 @@ class ReviewStoreCsvTests(unittest.TestCase):
         self.assertEqual(rows[0]["y_start"], "10")
         self.assertEqual(rows[0]["y_end"], "60")
 
+    def test_training_export_unknown_label_imports_as_unlabeled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
+            export_root = Path(tmp_dir) / "review_exports"
+            self._patch_review_paths(stack, export_root)
+            review_store.clear_imported_annotation_rows()
+
+            csv_text = _csv_text(
+                review_store.TRAINING_EXPORT_FIELDNAMES,
+                [
+                    {
+                        "image_id": "IMG_0001",
+                        "source_filename": "gel.png",
+                        "candidate_index": 1,
+                        "roi_y_start": 10,
+                        "roi_y_end": 60,
+                        "left_x": 5,
+                        "right_x": 25,
+                        "label": "unknown",
+                    }
+                ],
+            )
+
+            summary = review_store.import_training_annotation_csv(
+                csv_text,
+                {"IMG_0001": (100, 80)},
+                {"IMG_0001": "gel.png"},
+            )
+            rows = review_store.load_imported_annotation_rows()
+            review_store.clear_imported_annotation_rows()
+
+        self.assertEqual(summary["imported_lane_count"], 1)
+        self.assertEqual(rows[0]["category"], "")
+
     def test_restore_export_skips_reviewed_rows_outside_current_inventory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir, ExitStack() as stack:
             export_root = Path(tmp_dir) / "review_exports"

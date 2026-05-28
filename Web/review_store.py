@@ -199,6 +199,10 @@ def _candidate_sort_key(row: dict[str, Any]) -> tuple[str, int]:
     return str(row.get("image_id", "")), _candidate_index_or_none(row) or 0
 
 
+def _is_unknown_label(value: str) -> bool:
+    return value.strip().lower() == "unknown"
+
+
 def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -501,6 +505,8 @@ def validate_and_normalize_training_annotation_rows(
         image_id = str(row.get("image_id", "")).strip()
         source_filename = str(row.get("source_filename", "")).strip()
         category = str(row.get(category_key, "")).strip()
+        if has_training_export_schema and _is_unknown_label(category):
+            category = ""
         if not image_id:
             _raise_import_error(f"row {row_number}: image_id is blank")
         if image_id not in image_sizes:
@@ -512,7 +518,7 @@ def validate_and_normalize_training_annotation_rows(
             _raise_import_error(
                 f"row {row_number}: source_filename does not match current dataset for {image_id}: {source_filename}"
             )
-        if not category:
+        if not category and not has_training_export_schema:
             _raise_import_error(f"row {row_number}: category/label is blank")
 
         candidate_index = _parse_int(row.get("candidate_index", ""), "candidate_index", row_number)
