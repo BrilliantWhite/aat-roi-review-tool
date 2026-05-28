@@ -224,7 +224,7 @@ def update_dataset() -> dict[str, Any]:
 @app.post("/api/exports/review-restore")
 def export_review_restore() -> dict[str, Any]:
     try:
-        summary = export_review_restore_csv()
+        summary = export_review_restore_csv(valid_image_ids=set(repository.inventory_records))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **summary}
@@ -233,7 +233,10 @@ def export_review_restore() -> dict[str, Any]:
 @app.post("/api/exports/training-lanes")
 def export_training_lanes(payload: ExportTrainingPayload) -> dict[str, Any]:
     try:
-        summary = export_training_lanes_csv(include_unlabeled=payload.include_unlabeled)
+        summary = export_training_lanes_csv(
+            include_unlabeled=payload.include_unlabeled,
+            valid_image_ids=set(repository.inventory_records),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **summary}

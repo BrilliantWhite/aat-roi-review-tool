@@ -232,7 +232,7 @@ def _read_csv_by_image(path: Path) -> dict[str, dict[str, str]]:
     return {row["image_id"]: row for row in _read_csv(path)}
 
 
-def export_review_restore_csv() -> dict[str, Any]:
+def export_review_restore_csv(valid_image_ids: set[str] | None = None) -> dict[str, Any]:
     ensure_review_exports()
     roi_by_image = _read_csv_by_image(REVIEW_ROI_PATH)
     annotation_index = build_annotation_index()
@@ -241,6 +241,8 @@ def export_review_restore_csv() -> dict[str, Any]:
 
     for row in candidate_rows:
         image_id = row["image_id"]
+        if valid_image_ids is not None and image_id not in valid_image_ids:
+            continue
         roi_row = roi_by_image.get(image_id)
         if not roi_row:
             continue
@@ -281,7 +283,7 @@ def export_review_restore_csv() -> dict[str, Any]:
     }
 
 
-def export_training_lanes_csv(include_unlabeled: bool = True) -> dict[str, Any]:
+def export_training_lanes_csv(include_unlabeled: bool = True, valid_image_ids: set[str] | None = None) -> dict[str, Any]:
     ensure_review_exports()
     roi_by_image = _read_csv_by_image(REVIEW_ROI_PATH)
     annotation_index = build_annotation_index()
@@ -290,6 +292,8 @@ def export_training_lanes_csv(include_unlabeled: bool = True) -> dict[str, Any]:
 
     for row in candidate_rows:
         image_id = row["image_id"]
+        if valid_image_ids is not None and image_id not in valid_image_ids:
+            continue
         roi_row = roi_by_image.get(image_id)
         if not roi_row:
             continue
