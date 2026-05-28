@@ -267,6 +267,12 @@ button {
     background: #f9fafb;
 }
 
+.secondary-btn.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: #eff6ff;
+}
+
 .workspace {
     flex: 1;
     display: flex;
@@ -354,6 +360,10 @@ button {
     width: 100%;
     height: 100%;
     overflow: visible;
+}
+
+#overlay.add-lane-mode {
+    cursor: crosshair;
 }
 
 .roi-band {

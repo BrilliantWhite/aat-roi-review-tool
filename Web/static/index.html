@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AAT 凝胶 ROI / 泳道复核工具</title>
-    <link rel="stylesheet" href="/static/style.css?v=20260528-restore">
+    <link rel="stylesheet" href="/static/style.css?v=20260528-add-lane">
 </head>
 <body>
     <aside class="sidebar">
@@ -31,6 +31,7 @@
                 <div class="button-row stack">
                     <input id="training-csv-input" type="file" accept=".csv" hidden>
                     <input id="restore-csv-input" type="file" accept=".csv" hidden>
+                    <button id="btn-add-lane" class="secondary-btn">Add lane</button>
                     <button id="btn-update-dataset" class="secondary-btn">更新数据集</button>
                     <button id="btn-import-review-restore" class="secondary-btn">导入可复现分割CSV</button>
                     <button id="btn-import-training-csv" class="secondary-btn">导入标注CSV</button>
@@ -158,6 +159,6 @@
     </div>
 
     <div id="toast-container"></div>
-    <script src="/static/app.js?v=20260528-restore"></script>
+    <script src="/static/app.js?v=20260528-add-lane"></script>
 </body>
 </html>

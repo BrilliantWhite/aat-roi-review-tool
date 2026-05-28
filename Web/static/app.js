@@ -131,6 +131,8 @@ const TRANSLATIONS = {
             prev: 'Previous',
             next: 'Next',
             updateDataset: 'Update dataset',
+            addLane: 'Add lane',
+            cancelAddLane: 'Cancel add lane',
             importReviewRestore: 'Import restore CSV',
             importTrainingCsv: 'Import annotation CSV',
             exportReviewRestore: 'Export restore CSV',
@@ -218,6 +220,10 @@ const TRANSLATIONS = {
             importTrainingCsvSuccess: (imageCount, laneCount) => `Imported annotation CSV: ${imageCount} images, ${laneCount} lanes`,
             exportReviewRestoreSuccess: (imageCount, laneCount, filename) => `Exported restore CSV: ${imageCount} images, ${laneCount} lanes -> ${filename}`,
             exportTrainingCsvSuccess: (imageCount, laneCount, includeUnlabeled, filename) => `Exported training CSV: ${imageCount} images, ${laneCount} lanes${includeUnlabeled ? ' (unlabeled=unknown)' : ' (unlabeled skipped)'} -> ${filename}`,
+            addLaneMode: 'Click inside the ROI to place the new lane center',
+            addLaneSuccess: candidateIndex => `Added lane ${candidateIndex}`,
+            addLaneOutsideRoi: 'Click inside the ROI to add a lane',
+            addLaneTooNarrow: 'Not enough space at this position to add a lane',
             initFailed: 'Initialization failed',
         },
     },
@@ -242,6 +248,7 @@ const state = {
     isDirty: false,
     draftsByImageId: {},
     importedSessionActive: false,
+    isAddLaneMode: false,
     language: loadLanguage(),
 };
 
@@ -285,6 +292,7 @@ const importTrainingCsvBtnEl = document.getElementById('btn-import-training-csv'
 const exportReviewRestoreBtnEl = document.getElementById('btn-export-review-restore');
 const exportTrainingCsvBtnEl = document.getElementById('btn-export-training-csv');
 const reloadSavedBtnEl = document.getElementById('btn-reload-saved');
+const addLaneBtnEl = document.getElementById('btn-add-lane');
 const resetBtnEl = document.getElementById('btn-reset');
 const saveBtnEl = document.getElementById('btn-save');
 const prevBtnEl = document.getElementById('btn-prev');
@@ -311,7 +319,9 @@ const lanePreviewZoomLabelEl = document.getElementById('lane-preview-zoom-label'
 const resetScopeDescriptionEl = document.getElementById('reset-scope-description');
 
 function t(path, ...args) {
-    const value = path.split('.').reduce((current, key) => current?.[key], TRANSLATIONS[state.language]);
+    const keys = path.split('.');
+    const value = keys.reduce((current, key) => current?.[key], TRANSLATIONS[state.language])
+        ?? keys.reduce((current, key) => current?.[key], TRANSLATIONS.en);
     if (typeof value === 'function') {
         return value(...args);
     }
@@ -354,6 +364,7 @@ function applyLanguage() {
     exportReviewRestoreBtnEl.textContent = t('controls.exportReviewRestore');
     exportTrainingCsvBtnEl.textContent = t('controls.exportTrainingCsv');
     reloadSavedBtnEl.textContent = t('controls.reloadSaved');
+    updateAddLaneButton();
     resetBtnEl.textContent = t('controls.reset');
     saveBtnEl.textContent = t('controls.save');
     legendRoiEl.innerHTML = `<i class="legend-swatch roi"></i> ${t('workspace.legendRoi')}`;
@@ -416,6 +427,40 @@ function showToast(message) {
     toastContainerEl.appendChild(toast);
     toastContainerEl.className = 'toast-container';
     setTimeout(() => toast.remove(), 2800);
+}
+
+function updateAddLaneButton() {
+    if (!addLaneBtnEl) return;
+    const addLabel = state.language === 'zh' ? '添加泳道' : t('controls.addLane');
+    const cancelLabel = state.language === 'zh' ? '取消添加泳道' : t('controls.cancelAddLane');
+    addLaneBtnEl.textContent = state.isAddLaneMode ? cancelLabel : addLabel;
+    addLaneBtnEl.classList.toggle('active', state.isAddLaneMode);
+    overlayEl.classList.toggle('add-lane-mode', state.isAddLaneMode);
+}
+
+function setAddLaneMode(enabled) {
+    state.isAddLaneMode = Boolean(enabled && state.payload);
+    updateAddLaneButton();
+    if (state.isAddLaneMode) {
+        showToast(addLaneMessage('addLaneMode'));
+    }
+}
+
+function toggleAddLaneMode() {
+    setAddLaneMode(!state.isAddLaneMode);
+}
+
+function addLaneMessage(key, candidateIndex = null) {
+    if (state.language !== 'zh') {
+        return candidateIndex == null ? t(`toast.${key}`) : t(`toast.${key}`, candidateIndex);
+    }
+    const messages = {
+        addLaneMode: '请在 ROI 内点击新泳道中心位置',
+        addLaneOutsideRoi: '请点击 ROI 内位置添加泳道',
+        addLaneTooNarrow: '当前位置空间不足，无法添加泳道',
+        addLaneSuccess: `已添加泳道 ${candidateIndex}`,
+    };
+    return messages[key] || '';
 }
 
 function hasAnyDrafts() {
@@ -738,6 +783,108 @@ function normalizeSharedBoundaries() {
     recomputeAllBoundaries();
 }
 
+function medianLaneWidth() {
+    if (!state.payload) return 8;
+    const widths = state.payload.boundaries
+        .map(boundary => Number(boundary.right_x) - Number(boundary.left_x))
+        .filter(width => Number.isFinite(width) && width >= 2)
+        .sort((a, b) => a - b);
+    if (widths.length === 0) {
+        return Math.max(8, Math.round(state.payload.image.width / 30));
+    }
+    const middle = Math.floor(widths.length / 2);
+    const median = widths.length % 2
+        ? widths[middle]
+        : Math.round((widths[middle - 1] + widths[middle]) / 2);
+    return Math.max(8, Math.round(median));
+}
+
+function sortAndRenumberBoundaries() {
+    if (!state.payload) return;
+    state.payload.boundaries.sort((left, right) => {
+        const leftCenter = (Number(left.left_x) + Number(left.right_x)) / 2;
+        const rightCenter = (Number(right.left_x) + Number(right.right_x)) / 2;
+        return leftCenter - rightCenter;
+    });
+    state.payload.boundaries.forEach((boundary, index) => {
+        boundary.candidate_index = index + 1;
+        recomputeBoundary(boundary);
+    });
+}
+
+function cloneBoundaries(boundaries) {
+    return boundaries.map(boundary => ({
+        ...boundary,
+        annotation: { ...(boundary.annotation || {}) },
+    }));
+}
+
+function hasInvalidLaneWidth() {
+    return state.payload.boundaries.some(boundary => (Number(boundary.right_x) - Number(boundary.left_x)) < 2);
+}
+
+function addLaneAtPoint(point) {
+    if (!state.payload) return false;
+    const roiTop = state.payload.roi.y_start;
+    const roiBottom = state.payload.roi.y_end;
+    if (point.y < roiTop || point.y > roiBottom) {
+        showToast(addLaneMessage('addLaneOutsideRoi'));
+        return false;
+    }
+
+    const imageWidth = state.payload.image.width;
+    const laneWidth = Math.min(medianLaneWidth(), Math.max(8, imageWidth));
+    const halfWidth = laneWidth / 2;
+    const leftX = clamp(Math.round(point.x - halfWidth), 0, Math.max(0, imageWidth - laneWidth));
+    const rightX = clamp(leftX + laneWidth, leftX + 2, imageWidth);
+    if (rightX - leftX < 8) {
+        showToast(addLaneMessage('addLaneTooNarrow'));
+        return false;
+    }
+
+    const originalBoundaries = cloneBoundaries(state.payload.boundaries);
+    const newLane = {
+        candidate_index: state.payload.boundaries.length + 1,
+        left_x: leftX,
+        right_x: rightX,
+        center_x: Math.round((leftX + rightX) / 2),
+        estimated_width: rightX - leftX,
+        status: 'accepted',
+        source: 'manual_added',
+        confidence: 'manual',
+        notes: '',
+        auto_left_x: null,
+        auto_right_x: null,
+        auto_center_x: null,
+        auto_estimated_width: null,
+        auto_status: null,
+        is_manual_added: true,
+        annotation: { category: '' },
+    };
+
+    state.payload.boundaries.push(newLane);
+    sortAndRenumberBoundaries();
+    normalizeSharedBoundaries();
+
+    if (hasInvalidLaneWidth()) {
+        state.payload.boundaries = originalBoundaries;
+        showToast(addLaneMessage('addLaneTooNarrow'));
+        return false;
+    }
+
+    sortAndRenumberBoundaries();
+    const selectedLane = state.payload.boundaries.find(boundary => boundary === newLane);
+    state.selectedLaneIndex = selectedLane ? selectedLane.candidate_index : null;
+    state.hoveredLaneIndex = state.selectedLaneIndex;
+    setAddLaneMode(false);
+    markDirty();
+    renderAnnotationFields();
+    renderStatusPanel();
+    drawOverlay();
+    showToast(addLaneMessage('addLaneSuccess', state.selectedLaneIndex));
+    return true;
+}
+
 function buildSharedBoundarySpecs(boundaries) {
     if (boundaries.length === 0) return [];
 
@@ -972,6 +1119,10 @@ function handleOverlayClick(event) {
     if (state.drag || !state.payload) return;
     const point = svgPoint(event);
     if (findBoundarySpecAtPoint(point)) return;
+    if (state.isAddLaneMode) {
+        addLaneAtPoint(point);
+        return;
+    }
     const boundary = findLaneAtPoint(point);
     if (boundary) {
         openLaneModal(boundary.candidate_index);
@@ -1022,6 +1173,7 @@ function deleteLane(candidateIndex) {
     state.selectedLaneIndex = null;
     state.hoveredLaneIndex = null;
     normalizeSharedBoundaries();
+    sortAndRenumberBoundaries();
     renderAnnotationFields();
     renderStatusPanel();
     drawOverlay();
@@ -1085,7 +1237,7 @@ function drawOverlay() {
             class: `lane-fill${isActive ? ' selected' : ''}`,
             fill: `rgba(34, 197, 94, ${isActive ? Math.max(state.maskOpacity / 100, 0.32) : state.maskOpacity / 100})`,
         }), isActive ? { 'stroke-width': 2 } : {});
-        fill.style.cursor = 'pointer';
+        fill.style.cursor = state.isAddLaneMode ? 'crosshair' : 'pointer';
         overlayLayerEl.appendChild(fill);
     });
 
@@ -1236,6 +1388,7 @@ async function loadImageAt(index, options = {}) {
     state.selectedLaneIndex = null;
     state.hoveredLaneIndex = null;
     state.importedSessionActive = Boolean(payload.review?.has_imported_session);
+    setAddLaneMode(false);
     normalizeSharedBoundaries();
     clearDirty();
     renderAnnotationFields();
@@ -1267,6 +1420,7 @@ async function initializeData(preferredIndex = 0, preferredImageId = null) {
         await loadImageAt(state.currentIndex, { preserveCurrentDraft: false });
     } else {
         state.payload = null;
+        setAddLaneMode(false);
         clearDirty();
         renderStatusPanel();
         renderAnnotationFields();
@@ -1294,8 +1448,8 @@ async function saveCurrentReview() {
             right_x: boundary.right_x,
             status: boundary.status,
             notes: boundary.notes || '',
-            source: 'manual_review',
-            confidence: 'manual',
+            source: boundary.source || 'manual_review',
+            confidence: boundary.confidence || 'manual',
             auto_left_x: boundary.auto_left_x,
             auto_right_x: boundary.auto_right_x,
             auto_center_x: boundary.auto_center_x,
@@ -1441,6 +1595,9 @@ laneCategoryInputEl.addEventListener('keydown', event => {
     }
 });
 window.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && state.isAddLaneMode) {
+        setAddLaneMode(false);
+    }
     if (event.key === 'Escape' && !laneModalEl.classList.contains('hidden')) {
         closeLaneModal();
     }
@@ -1453,6 +1610,7 @@ overlayEl.addEventListener('mousemove', handleOverlayMouseMove);
 overlayEl.addEventListener('click', handleOverlayClick);
 overlayEl.addEventListener('mouseup', stopDrag);
 overlayEl.addEventListener('mouseleave', handleOverlayMouseLeave);
+addLaneBtnEl.addEventListener('click', toggleAddLaneMode);
 updateDatasetBtnEl.addEventListener('click', () => updateDataset().catch(error => showToast(error.message)));
 importReviewRestoreBtnEl.addEventListener('click', () => restoreCsvInputEl.click());
 restoreCsvInputEl.addEventListener('change', () => importReviewRestoreCsvFromPicker().catch(error => {
